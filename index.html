@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <meta
+  http-equiv="origin-trial"
+  data-feature="WebXR Device API"
+  data-expires="2019-11-15"
+  content="Aq0kVbdidUaHnsMbpHtt/2mkFb9xj3kS1odpm9ikqWe5SGwRt3OrptfBNwDgI6Au7vCI+Ukrs0JUbQpnOKc8YQ4AAABdeyJvcmlnaW4iOiJodHRwczovL215LXRlc3QtZmY1NTYud2ViLmFwcDo0NDMiLCJmZWF0dXJlIjoiV2ViWFJEZXZpY2VNNzYiLCJleHBpcnkiOjE1NzM3OTM2NDh9">
+  <!-- <script src="https://cdn.jsdelivr.net/npm/vue/dist/vue.js"></script> -->
+  <script src="./js/three.min.js"></script>
+  <!-- <script src="./js/main.js"></script> -->
+  <link rel="stylesheet" href="reset.css">
+  <link rel="stylesheet" href="main.css">
+  <style>
+
+  </style>
+</head>
+<body>
+    <div>
+        <p id="message">message</p>
+        <p id="counter">count</p>
+    </div>
+    <script type="module">
+        import {QueryArgs} from './js/modules/query-args.js';
+        // 191002時点の最新ポリフィル
+        import WebXRPolyfill from './js/modules/webxr-polyfill/build/webxr-polyfill.module.js';
+        if (QueryArgs.getBool('usePolyfill', true)) {
+            let polyfill = new WebXRPolyfill();
+        }
+
+        //https://storage.googleapis.com/chromium-webxr-test/r695783/proposals/phone-ar-plane-detection-anchors.html
+
+        let xrSession;
+        let xrRefSpace;
+        let count = 0;
+
+        let glCanvas = document.createElement("canvas");
+        let gl = glCanvas.getContext("webgl");
+        let layer = null;
+
+        let message = document.getElementById('message');
+        message.innerHTML = 'start';
+
+        let counter = document.getElementById('counter');
+
+        let poses = document.getElementById('pose');
+        
+        // ARコンテンツがサポートされているか確認
+        navigator.xr.isSessionSupported('immersive-ar').then((supported) => {
+            if (supported) {
+                message.innerHTML = 'immersive-ar supported';
+                const enterXrBtn = document.createElement("button");
+                enterXrBtn.innerHTML = "Enter AR";
+                enterXrBtn.addEventListener("click", beginXRSession);
+                document.body.appendChild(enterXrBtn);
+            } else {
+
+            }
+        });
+        // supportsSession古いらしい　最新版はポリフィル
+        // navigator.xr.supportsSession('immersive-ar').then(() => {
+        //     message.innerHTML = 'immersive-ar supported';
+        //     const enterXrBtn = document.createElement("button");
+        //     enterXrBtn.innerHTML = "Enter AR";
+        //     enterXrBtn.addEventListener("click", beginXRSession);
+        //     document.body.appendChild(enterXrBtn);
+        // });
+
+        function beginXRSession() {
+            // XRSession取得
+            message.innerHTML = 'beginXR';
+            
+            navigator.xr.requestSession("immersive-ar").then(onSessionStarted);
+
+            function onSessionStarted(session) {
+                xrSession = session;
+                message.innerHTML = 'got XRSession';
+                // 領域データの取得
+                session.requestReferenceSpace('local').then((refSpace) => {
+                    xrRefSpace = refSpace;
+                    message.innerHTML = 'got xrRefSpace';
+                }).then(setupWebGLLayer)
+                .then(() => {
+                    // Start the render loop
+                    try {
+                        message.innerHTML = 'called requestAnimationFrame';
+                        // 何故onDrawFrameが発火しないのか　これがわからない xrSessionのコールバックに含まれるxrFrameが必要なので必須
+                        xrSession.requestAnimationFrame(onDrawFrame);
+                        // こっちは発火する
+                        // window.requestAnimationFrame(onDrawFrame);
+                    } catch(e) {
+                        message.innerHTML = e;
+                    }
+                });
+            }
+            
+            // webGレイヤーをXRSessionにセット
+            function setupWebGLLayer() {
+                // Make sure the canvas context we want to use is compatible with the current xr device.
+                return gl.makeXRCompatible().then(() => {
+                    // The content that will be shown on the device is defined by the session's
+                    // baseLayer.
+                    try {
+                        xrSession.updateRenderState({ baseLayer: new XRWebGLLayer(session, gl) });
+                        message.innerHTML = 'setup WebGLLayer';
+                    } catch(e) {
+                        message.innerHTML = e;
+                    }
+                });
+            }
+
+            // 描画ループ
+            function onDrawFrame(timestamp, xrFrame) {
+                message.innerHTML = 'onDrawFrame worked!';
+                count++;
+                counter.innerHTML = String(count);
+                // Do we have an active session?
+                if (xrSession) {
+                    let glLayer = xrSession.renderState.baseLayer;
+                    let pose = xrFrame.getViewerPose(xrReferenceSpace);
+                    if (pose) {
+                        // Run imaginary 3D engine's simulation to step forward physics, animations, etc.
+                        scene.updateScene(timestamp, xrFrame);
+
+                        gl.bindFramebuffer(gl.FRAMEBUFFER, glLayer.framebuffer);
+
+                        for (let view of pose.views) {
+                            let viewport = glLayer.getViewport(view);
+                            gl.viewport(viewport.x, viewport.y, viewport.width, viewport.height);
+                            poses.innerHTML = viewport;
+                            // drawScene(view);
+                        }
+                    }
+                    // Request the next animation callback
+                    xrSession.requestAnimationFrame(onDrawFrame);
+                } else {
+                    // No session available, so render a default mono view.
+                    gl.viewport(0, 0, glCanvas.width, glCanvas.height);
+                    // drawScene();
+
+                    // Request the next window callback
+                    window.requestAnimationFrame(onDrawFrame);
+                }
+            }
+        }
+    </script>
+</body>
+</html>
